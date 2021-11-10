@@ -155,7 +155,7 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
-        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs)
+        rgb, disp, acc, extras = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
         if i==0:
@@ -168,10 +168,14 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
         """
 
         if savedir is not None:
+
             rgb8 = to8b(rgbs[-1])
             filename = os.path.join(savedir, '{:03d}.png'.format(i))
             imageio.imwrite(filename, rgb8)
-
+            filename = os.path.join(savedir, '{:03d}_depth.png'.format(i))
+            imageio.imwrite(filename, extras["depth_map"].cpu().numpy())
+            filename = os.path.join(savedir, '{:03d}_acc.png'.format(i))
+            imageio.imwrite(filename, acc.cpu().numpy())
 
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
@@ -360,6 +364,7 @@ def render_rays(ray_batch,
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
     print(near.size(), far.size())
+
     t_vals = torch.linspace(0., 1., steps=N_samples)
     if not lindisp:
         z_vals = near * (1.-t_vals) + far * (t_vals)
@@ -381,45 +386,48 @@ def render_rays(ray_batch,
             t_rand = torch.Tensor(t_rand)
 
         z_vals = lower + (upper - lower) * t_rand
+    
     pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples, 3]
-    plane_eq = np.array([-0.11030584932208883, 0.16937836169936937, 0.9793587648014237, 0.654122509801331])
-    plane_center = np.array([-0.00675322 -0.04113195 -0.06855159])
+    ### BEGINS EXPERIMENTAL BIT
+    plane_normal = torch.tensor(np.array([-0.11030584932208883, 0.16937836169936937, 0.9793587648014237]), dtype=torch.float)
+    object_center = torch.tensor(np.array([-0.03459237, -0.01080379, 0.06243577]), dtype=torch.float)
+    plane_center = torch.tensor(np.array([-0.00675322, -0.04113195, -0.06855159]), dtype=torch.float)
     trunc_pts = pts.cpu().numpy()
+    object_center = object_center - torch.matmul(object_center - plane_center, plane_normal) * plane_normal
+    # SETS FAR AT PLANE WITH SOME OFFSET FOR EACH RAY
+    far = (torch.matmul(object_center - rays_o, plane_normal)/torch.matmul(rays_d, plane_normal)).reshape_as(near) - 0.06
+    z_vals = near * (1.-t_vals) + far * (t_vals)
+    pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None]
 
-
+    far = far - (pts[:,-1,:] - object_center).norm(dim=1).square().reshape_as(far) * 1.1
     simple_method, normalised, normalised_sphere = False, True, False
-    if simple_method:
-        trunc_pts = (trunc_pts - plane_center)
-        trunc_pts = ((trunc_pts @ plane_eq[:3].T) > 0.2).astype(int)
-    elif normalised:
-        norm = np.linalg.norm((trunc_pts - plane_center), axis=2).reshape((N_rays, N_samples, 1))
-        trunc_pts = (trunc_pts - plane_center) / norm
-        trunc_pts = ((trunc_pts @ plane_eq[:3].T) > 0.4).astype(int)
-    elif normalised_sphere:
-        norm = np.linalg.norm((trunc_pts - plane_center), axis=2).reshape((N_rays, N_samples, 1))
-        trunc_pts = (trunc_pts - plane_center) / norm
-        norm = (norm < 0.5).astype(int).reshape((N_rays, N_samples))
-        trunc_pts = np.multiply(((trunc_pts @ plane_eq[:3].T) > 0.2).astype(int), norm)
-    print(trunc_pts.shape)
+
+    # if simple_method:
+    #     trunc_pts = (trunc_pts - plane_center)
+    #     trunc_pts = ((trunc_pts @ plane_eq[:3].T) > 0.2).astype(int)
+    # elif normalised:
+    #     norm = np.linalg.norm((trunc_pts - plane_center), axis=2).reshape((N_rays, N_samples, 1))
+    #     trunc_pts = (trunc_pts - plane_center) / norm
+    #     trunc_pts = ((trunc_pts @ plane_eq[:3].T) > 0.4).astype(int)
+    # elif normalised_sphere:
+    #     norm = np.linalg.norm((trunc_pts - plane_center), axis=2).reshape((N_rays, N_samples, 1))
+    #     trunc_pts = (trunc_pts - plane_center) / norm
+    #     norm = (norm < 0.5).astype(int).reshape((N_rays, N_samples))
+    #     trunc_pts = np.multiply(((trunc_pts @ plane_eq[:3].T) > 0.2).astype(int), norm)
+    # print(trunc_pts.shape)
     #trunc_pts = np.multiply(((trunc_pts @ plane_eq[:3].T ) > 0.2).astype(int), norm)
     
     temp=0
-    for i,ray in enumerate(trunc_pts):
-
-        index = sum(ray)
-        if index < N_samples:
-            temp+=1
-            far_temp = t_vals[max(0,index-1)] * (far - near) + near
+    for i,far_temp in enumerate(far):
+        if far_temp > near[i]:
             z_new = near * (1.-t_vals) + far_temp * (t_vals)
             z_vals[i] = z_new[i]
-            # if i == 0: 
-            #     np.savetxt("output3.txt", (rays_d[i] * z_new[i,:,None]).cpu().numpy()) 
-            #     np.savetxt("output5.txt", (rays_o[i].expand([N_samples, 3])).cpu().numpy())
-            #     np.savetxt("output4.txt", (rays_o[i].expand([N_samples, 3]) + rays_d[i] * z_new[i,:,None]).cpu().numpy())
+        else:
+            far_temp = near[i]
+        z_new = near * (1.-t_vals) + far_temp * (t_vals)
+        z_vals[i] = z_new[i]
     pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None]
-    print(temp)
-    # np.savetxt("output2.txt", z_vals[0].cpu().numpy())
-
+    
     # raw = run_network(pts)
     raw = network_query_fn(pts, viewdirs, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
@@ -434,7 +442,7 @@ def render_rays(ray_batch,
 
         z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
         pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples + N_importance, 3]
-        np.savetxt("output.txt", pts[::100, 0::10, :].cpu().numpy().reshape((-1,3)))
+        # np.savetxt("output.txt", pts[::100, 0::10, :].cpu().numpy().reshape((-1,3)))
         run_fn = network_fn if network_fine is None else network_fine
 #         raw = run_network(pts, fn=run_fn)
         raw = network_query_fn(pts, viewdirs, run_fn)

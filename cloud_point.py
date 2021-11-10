@@ -38,7 +38,7 @@ def get_rotation_matrix(path, vec):
     return rotation_from_vectors(np.asarray(best_eq[0:3]), vec), points
 
 def main():
-    basic = False
+    basic, rotate = False, True
     recenter, spherify, plot = True, True, True
     bottom = np.reshape([0,0,0,1.], [1,4])
 
@@ -105,15 +105,20 @@ def main():
             #print(pose_rot)
             #print(pose_rot.shape, points.shape)
             points =  np.concatenate((points, np.ones((points.shape[0],1))), axis=1)
-            points = (pose_rot @ points.T).T 
+            points = (pose_rot @ points.T).T [:,:3]
             best_eq, plane_points = find_plane(points[:,:3])
-            new_rot =  rotation_from_vectors(np.asarray(best_eq[0:3]), [0,0,1])
-            print(rot)
-            pose_rot = np.pad(new_rot, ((0,0), (0,1)), mode='constant')
-            pose_rot = np.concatenate([pose_rot[:3,:4], bottom], -2)
-            print(pose_rot)
-            # poses = poses @ pose_rot
-            points = (pose_rot @ points.T).T[:,:3]
+            temp = [i for i in points if i not in plane_points]
+            print(np.average(temp, axis=0))
+            print(np.average(plane_points, axis=0))
+            # new_rot =  rotation_from_vectors(np.asarray(best_eq[0:3]), [0,0,1])
+            # print(rot)
+            # pose_rot = np.pad(new_rot, ((0,0), (0,1)), mode='constant')
+            # pose_rot = np.concatenate([pose_rot[:3,:4], bottom], -2)
+            # print(pose_rot)
+            # # poses = poses @ pose_rot
+            # points = (pose_rot @ points.T).T[:,:3]
+
+        if rotate:
             # Finding camera locations and extra point in view direction
             bottom_mat = np.tile(np.reshape(bottom, [1,1,4]), [poses.shape[0],1,1])
             poses_matrix = np.concatenate([poses[:,:3,:4], bottom_mat], -2)
