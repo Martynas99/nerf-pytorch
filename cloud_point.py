@@ -37,11 +37,35 @@ def get_rotation_matrix(path, vec):
     best_eq, plane_points = find_plane(points)
     return rotation_from_vectors(np.asarray(best_eq[0:3]), vec), points
 
+def line_between_points(points, n=50):
+    t = np.linspace(0,1.,n).reshape(1,n)
+    a = np.array(points)[0].reshape(3,1)
+    b = np.array(points)[1].reshape(3,1)
+    arr = a + (b-a) @ t
+    print(arr.shape)
+    return arr.T
+
+def square_from_coord(coords):
+    for i in range(4):
+        if i == 0:
+           points = line_between_points([coords[i-1], coords[i]])
+        else: 
+            points = np.vstack((points, line_between_points([coords[i-1], coords[i]])))
+        print(points.shape)
+    return points
+
+def rectangle_from_coord(coords):
+    coords = np.array(coords)
+    points = square_from_coord(coords[:4])
+    points = np.vstack((points, square_from_coord(coords[4:])))
+    for i in range(4):
+        points = np.vstack((points, line_between_points(coords[[i, i+4]])))
+    return points
+    
 def main():
     basic, rotate = False, True
     recenter, spherify, plot = True, True, True
     bottom = np.reshape([0,0,0,1.], [1,4])
-
     # Obtain rotation matrix for plane
     rot, points = get_rotation_matrix("./data/nerf_llff_data/tea/points3D.txt", [0,0,-1])
     points = points
@@ -91,7 +115,8 @@ def main():
 
     if plot:
         viz = visdom.Visdom()
-
+        coords = [[-0.1025, 0.1227, 0.1166], [0.00945, 0.13097, 0.12796], [0.02498, -0.10213, 0.17246], [-0.0808, -0.1164, 0.1574],
+        [-0.0767, 0.0854, -0.099], [0.0353, 0.09364, -0.09772], [0.0508, -0.1395, -0.0432], [-0.0557, -0.1527, -0.0522]]
         plane_points = points
 
         if not (recenter or spherify):
@@ -131,8 +156,8 @@ def main():
 
         if False:
             points = points @ new_rot
-        camera2=np.loadtxt("output.txt")
-        print(camera2.shape)
+
+        camera2=rectangle_from_coord(coords)
         data = np.vstack((points , plane_points, camera_points[:, :3], camera_points_direction[:, :3], camera2, camera_points2[:, :3]))
         # data = np.vstack((camera_points[:, :3], camera_points_direction[:, :3], camera2, camera_points2[:, :3]))
         data_color = [0,255,0] * np.ones_like(points)
@@ -145,7 +170,7 @@ def main():
         color = np.vstack((data_color, plane_color, camera_color, camera_direction_color, camera_color2, camera_direction_color2))
         # color = np.vstack((camera_color, camera_direction_color, camera_color2, camera_direction_color2))
 
-        viz.scatter(data, opts=dict(markersize=1, markercolor=color, title="Rotation + recenter. Spherify = {}, Ceneter = {}".format(spherify, recenter)))
+        viz.scatter(data, opts=dict(markersize=2, markercolor=color, title="Rotation + recenter. Spherify = {}, Ceneter = {}".format(spherify, recenter)))
 
 """This seems to get correct camera positions! (for no spherification and recentering)"""
 
