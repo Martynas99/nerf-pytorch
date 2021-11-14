@@ -115,10 +115,8 @@ def main():
 
     if plot:
         viz = visdom.Visdom()
-        coords = [[-0.1025, 0.1227, 0.1166], [0.00945, 0.13097, 0.12796], [0.02498, -0.10213, 0.17246], [-0.0808, -0.1164, 0.1574],
-        [-0.0767, 0.0854, -0.099], [0.0353, 0.09364, -0.09772], [0.0508, -0.1395, -0.0432], [-0.0557, -0.1527, -0.0522]]
+        
         plane_points = points
-
         if not (recenter or spherify):
             pose_rot = np.concatenate([pose_rot[:3,:4], bottom], -2)
             #print(pose_rot.shape, data.shape)
@@ -156,8 +154,14 @@ def main():
 
         if False:
             points = points @ new_rot
-
-        camera2=rectangle_from_coord(coords)
+        coords = [[-0.1025, 0.1227, 0.1166], [0.00945, 0.13097, 0.12796], [0.02498, -0.10213, 0.17246], [-0.0808, -0.1164, 0.1574],
+                [-0.0767, 0.0854, -0.099], [0.0353, 0.09364, -0.09772], [0.0508, -0.1395, -0.0432], [-0.0557, -0.1527, -0.0522]]
+        top = np.array(coords[:4])
+        best_eq = np.array(best_eq)
+        bottom = top - 0.95 * best_eq[:3] * (best_eq[:3].T @ np.average(top, 0).reshape((3,1)) + best_eq[3])
+        coords = np.vstack((top,bottom))
+        print(coords)
+        camera2 = rectangle_from_coord(coords)
         data = np.vstack((points , plane_points, camera_points[:, :3], camera_points_direction[:, :3], camera2, camera_points2[:, :3]))
         # data = np.vstack((camera_points[:, :3], camera_points_direction[:, :3], camera2, camera_points2[:, :3]))
         data_color = [0,255,0] * np.ones_like(points)

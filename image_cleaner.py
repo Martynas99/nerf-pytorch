@@ -6,28 +6,6 @@ import numpy as np
 import visdom
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def main():
     split = True
     viz = visdom.Visdom()
@@ -42,13 +20,16 @@ def main():
     path = f"logs/tea/renderonly_path_049999/{i_max:03}.png"
     image = cv2.imread(os.path.join("/home/mifs/ml867/test_nerf/temp/nerf-pytorch", path))
     kernel = np.ones((18,18),np.uint8)
+
     if split and image.shape[-1]==3:
         b,g,r = cv2.split(image)
         image = cv2.merge([r,g,b])
+
     closing = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
     opening = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
     closing2opening = cv2.morphologyEx(closing, cv2.MORPH_OPEN, kernel)
     opening2closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel)
+
     if split and image.shape[-1]==3:
         closing = np.moveaxis(closing, [2,0,1], [0,1,2])
         opening = np.moveaxis(opening, [2,0,1], [0,1,2])
@@ -56,7 +37,6 @@ def main():
         viz.image(opening, opts={'title': 'Opening'})
         viz.image(closing, opts={'title': 'Closing'})
         viz.image(image, opts={'title': 'Original'})
-        
     else:
         viz.image(opening, opts={'title': 'Opening'})
         viz.image(closing, opts={'title': 'Closing'})

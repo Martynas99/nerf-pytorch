@@ -96,7 +96,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
         # special case to render full image
         rays_o, rays_d = get_rays(H, W, K, c2w)
     else:
-        # use provided ray batch
+        # use provided ray batchC
         rays_o, rays_d = rays
         
     if use_viewdirs:
@@ -141,7 +141,11 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
 def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
 
     H, W, focal = hwf
-
+    coords = [[-0.1025, 0.1227, 0.1166], [0.00945, 0.13097, 0.12796], [0.02498, -0.10213, 0.17246], [-0.0808, -0.1164, 0.1574],
+            [-0.0783268,   0.08751743, -0.08602587],[ 0.0336232,   0.09578743, -0.07466587],[ 0.0491532,  -0.13731257, -0.03016587],[-0.0566268,  -0.15158257, -0.04522587]]
+    coords = np.concatenate([np.array(coords), np.ones((len(coords),1))], 1)
+ 
+    
     if render_factor!=0:
         # Render downsampled for speed
         H = H//render_factor
@@ -166,10 +170,22 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
             p = -10. * np.log10(np.mean(np.square(rgb.cpu().numpy() - gt_imgs[i])))
             print(p)
         """
+        
 
         if savedir is not None:
-
+            c2w_arr = np.linalg.inv(np.vstack((c2w[:3,:4].cpu().numpy(), np.array([0,0,0,1]))))
+            print(K)
+            print(c2w_arr)
+            pixel_pos = K @ c2w_arr[:3,:4] @ coords.T 
+            print(pixel_pos)
+            pixel_pos = (pixel_pos[:2]/pixel_pos[2]).round().astype(int)
+            print(pixel_pos)
+            print(pixel_pos.shape)
             rgb8 = to8b(rgbs[-1])
+            print(rgb8.shape)
+            np.save(os.path.join(savedir, "c2ws/c2w_{:03d}.npy".format(i)), c2w.cpu().numpy())
+            np.save(os.path.join(savedir, "Ks/K_{:03d}.npy".format(i)), K)
+            #rgb8[[pixel_pos[1],W-pixel_pos[0]]] = np.array((255,0,0))
             filename = os.path.join(savedir, '{:03d}.png'.format(i))
             imageio.imwrite(filename, rgb8)
             filename = os.path.join(savedir, '{:03d}_depth.png'.format(i))
@@ -712,6 +728,7 @@ def train():
             print('test poses shape', render_poses.shape)
 
             rgbs, disps = render_path(render_poses, hwf, K, args.chunk, render_kwargs_test, gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
+            
             print('Done rendering', testsavedir)
             imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'), to8b(rgbs), fps=30, quality=8)
             imageio.mimwrite(os.path.join(testsavedir, 'disp.mp4'), to8b(disps / np.max(disps)), fps=30, quality=8)
