@@ -143,6 +143,8 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
     H, W, focal = hwf
     coords = [[-0.1025, 0.1227, 0.1166], [0.00945, 0.13097, 0.12796], [0.02498, -0.10213, 0.17246], [-0.0808, -0.1164, 0.1574],
             [-0.0783268,   0.08751743, -0.08602587],[ 0.0336232,   0.09578743, -0.07466587],[ 0.0491532,  -0.13731257, -0.03016587],[-0.0566268,  -0.15158257, -0.04522587]]
+    # coords = [[-0.04522479, -0.17479411,  0.05064869]]
+    coords = [[-0.0808, -0.1164, 0.1574]]
     coords = np.concatenate([np.array(coords), np.ones((len(coords),1))], 1)
  
     
@@ -174,18 +176,16 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
 
         if savedir is not None:
             c2w_arr = np.linalg.inv(np.vstack((c2w[:3,:4].cpu().numpy(), np.array([0,0,0,1]))))
-            print(K)
-            print(c2w_arr)
             pixel_pos = K @ c2w_arr[:3,:4] @ coords.T 
-            print(pixel_pos)
             pixel_pos = (pixel_pos[:2]/pixel_pos[2]).round().astype(int)
-            print(pixel_pos)
-            print(pixel_pos.shape)
             rgb8 = to8b(rgbs[-1])
-            print(rgb8.shape)
             np.save(os.path.join(savedir, "c2ws/c2w_{:03d}.npy".format(i)), c2w.cpu().numpy())
             np.save(os.path.join(savedir, "Ks/K_{:03d}.npy".format(i)), K)
-            #rgb8[[pixel_pos[1],W-pixel_pos[0]]] = np.array((255,0,0))
+            print(pixel_pos)
+            print(rgb8.shape)
+            rgb8[[pixel_pos[1], W - pixel_pos[0]]] = np.array((255,0,0))
+            rgb8[0,0]=np.array((255,0,0))
+            rgb8[-1,-1]=np.array((0,255,0))
             filename = os.path.join(savedir, '{:03d}.png'.format(i))
             imageio.imwrite(filename, rgb8)
             filename = os.path.join(savedir, '{:03d}_depth.png'.format(i))
